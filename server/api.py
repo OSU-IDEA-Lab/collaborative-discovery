@@ -172,32 +172,40 @@ class Import(Resource):
         email = request.form.get('email')
         initial_user_h = request.form.get('initial_fd')
         fd_comment = request.form.get('fd_comment')
+        skip_user = request.form.get('skip_user')
+        violation_ratio = request.form.get('violation_ratio')
         if scenario_id is None or email is None:
             scenario_id = json.loads(request.data)['scenario_id']
             email = json.loads(request.data)['email']
             initial_user_h = json.loads(request.data)['initial_fd']
             fd_comment = json.loads(request.data)['fd_comment']
+            skip_user = False if 'skip_user' not in json.loads(request.data).keys() else json.loads(request.data)['skip_user']
+            violation_ratio = None if 'violation_ratio' not in json.loads(request.data).keys() else json.loads(request.data)['violation_ratio']
         print(scenario_id)
         console.log(initial_user_h)
 
-        # Get the user from the users list
-        try:
-            users = pickle.load( open('./study-utils/users.p', 'rb'))
-        except:
-            return {'msg': '[ERROR] users does not exist'}, 400, {'Access-Control-Allow-Origin': '*'}
-        
-        # Save the user's questionnaire responses
-        if email not in users.keys():
-            return {'msg': '[ERROR] no user exists with this email'}, 400, {'Access-Control-Allow-Origin': '*'}
-        
-        user = users[email]
-        user.scenarios = user.scenarios[1:]
-        user.runs.append(new_project_id)
-        user_interaction_number = TOTAL_SCENARIOS - len(user.scenarios)
-        users[email] = user
+        if not skip_user:
+            # Get the user from the users list
+            try:
+                users = pickle.load( open('./study-utils/users.p', 'rb'))
+            except:
+                return {'msg': '[ERROR] users does not exist'}, 400, {'Access-Control-Allow-Origin': '*'}
+            
+            # Save the user's questionnaire responses
+            if email not in users.keys():
+                return {'msg': '[ERROR] no user exists with this email'}, 400, {'Access-Control-Allow-Origin': '*'}
+            
+            user = users[email]
+            user.scenarios = user.scenarios[1:]
+            user.runs.append(new_project_id)
+            user_interaction_number = TOTAL_SCENARIOS - len(user.scenarios)
+            users[email] = user
 
-        # Save the users object updates
-        pickle.dump( users, open('./study-utils/users.p', 'wb') )
+            # Save the users object updates
+            pickle.dump( users, open('./study-utils/users.p', 'wb') )
+        
+        else:
+            user_interaction_number = 1 if violation_ratio == 'close' else 5
 
         with open('scenarios.json', 'r') as f:
             scenarios_list = json.load(f)

@@ -127,16 +127,23 @@ def run(s, b_type, decision_type, stat_calc):
         #                 X_per_FD[h['cfd']].add((j, i))
         fd_metadata[h['cfd']] = fd_m
 
-    header = None
     project_id = None
 
     try:
-        r = requests.post('http://localhost:5000/duo/api/import', data={'scenario_id': str(s)})
-        res = json.loads(r.json())
-        header = res['header']
+        r = requests.post('http://localhost:5000/duo/api/import', data={
+            'scenario_id': str(s),
+            'email': '',
+            'initial_fd': 'Not Sure',
+            'fd_comment': '',
+            'skip_user': True,
+            'violation_ratio': 'close'
+        })
+        print(r)
+        res = r.json()
         project_id = res['project_id']
     except Exception as e:
         print(e)
+        return
 
     print(project_id)
 
@@ -148,7 +155,7 @@ def run(s, b_type, decision_type, stat_calc):
         print('before sample')
         r = requests.post('http://localhost:5000/duo/api/sample', data={'project_id': project_id})
         print('after sample')
-        res = json.loads(r.json())
+        res = r.json()
 
         sample = res['sample']
         print('extracted sample')
@@ -185,6 +192,11 @@ def run(s, b_type, decision_type, stat_calc):
     while msg != '[DONE]':
         iter_num += 1
         print('iter:', iter_num)
+        print(data.keys())
+        header = list()
+        for row in data.keys():
+            header = [c for c in data[row].keys() if c != 'id']
+            break
         feedbackMap = buildFeedbackMap(data, feedback, header)
 
         # Bayesian behavior
@@ -315,13 +327,13 @@ def run(s, b_type, decision_type, stat_calc):
         formData = {
             'project_id': project_id,
             'feedback': json.dumps(feedback),
-            'refresh': 0,
-            'is_new_feedback': 1 if is_new_feedback is True else 0
+            'current_user_h': 'Not Sure',
+            'user_h_comment': '',
         }
 
         try:
-            r = requests.post('http://localhost:5000/duo/api/clean', data=formData)
-            res = json.loads(r.json())
+            r = requests.post('http://localhost:5000/duo/api/feedback', data=formData)
+            res = r.json()
             msg = res['msg']
             if msg != '[DONE]':
                 sample = res['sample']
