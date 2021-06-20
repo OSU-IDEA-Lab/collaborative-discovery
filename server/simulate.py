@@ -11,15 +11,6 @@ import math
 import scipy.special as sc
 from scipy.stats import beta as betaD
 import re
-
-# class Hypothesis(object):
-#     def __init__(self, fd, conf, support, vios, vio_pairs):
-#         self.fd = fd
-#         self.conf = conf
-#         self.support = support
-#         self.vios = vios
-#         self.vio_pairs = vio_pairs
-
 class FDMeta(object):
     def __init__(self, fd, a, b, support, vios, vio_pairs):
         self.lhs = fd.split(' => ')[0][1:-1].split(', ')
@@ -81,14 +72,11 @@ def run(s, b_type, decision_type, stat_calc):
         h['vio_pairs'] = set(tuple(vp) for vp in h['vio_pairs'])
 
         if b_type == 'oracle':
-            # conf = next(i for i in scenario['clean_hypothesis_space'] if i['cfd'] == h['cfd'])['conf']
             mu = next(i for i in scenario['clean_hypothesis_space'] if i['cfd'] == h['cfd'])['conf']
             if mu == 1:
                 mu = 0.99999
             variance = 0.00000001
             alpha, beta = initialPrior(mu, variance)
-            # alpha = 1
-            # beta = 1
         elif b_type == 'informed':
             mu = h['conf']
             variance = 0.01
@@ -108,23 +96,6 @@ def run(s, b_type, decision_type, stat_calc):
         print('iter:', iter_num)
         print('alpha:', fd_m.alpha)
         print('beta:', fd_m.beta)
-        # for i in full_dirty_data.index:
-        #     for j in full_dirty_data.index:
-        #         if i == j:
-        #             continue
-        #         match = True
-        #         for lh in fd_m.lhs:
-        #             if full_dirty_data.at[i, lh] != full_dirty_data.at[j, lh]:
-        #                 match = False
-        #                 break
-
-        #         if match is True and ((i, j) not in X and (j, i) not in X):
-        #             if i < j:
-        #                 X.add((i, j))
-        #                 X_per_FD[h['cfd']].add((i, j))
-        #             else:
-        #                 X.add((j, i))
-        #                 X_per_FD[h['cfd']].add((j, i))
         fd_metadata[h['cfd']] = fd_m
 
     project_id = None
@@ -234,14 +205,9 @@ def run(s, b_type, decision_type, stat_calc):
         iter_vios_found = {(x,y) for (x,y) in vios_found if (x != y and (x,y) in sample_X) or (x == y and str(x) in data.keys())}
         iter_vios_total = {i for i in fd_m.vio_pairs if i in sample_X}
 
-        # print(sample)
         print('q_t:', q_t)
 
         for row in data.keys():
-
-            # if int(row) in iter_marked_rows:
-            #     print(row)
-            #     continue
 
             if b_type == 'oracle':
                 if stat_calc == 'precision':
@@ -258,11 +224,6 @@ def run(s, b_type, decision_type, stat_calc):
                 decision = np.random.binomial(1, q_t)
             else:
                 decision = 1 if q_t >= p_max else 0
-            # print(row, decision)
-
-            # if len({v for v in iter_vios_marked if int(row) in v}) > 0:
-            #     print('skipped')
-            #     continue
 
             if decision == 1:
                 if len(vios_w_i) > 0:
@@ -301,15 +262,6 @@ def run(s, b_type, decision_type, stat_calc):
                     iter_vios_marked.add((int(row), int(row)))
                     marked_rows.add(int(row))
                     iter_marked_rows.add(int(row))
-            
-        precision = len(iter_vios_found) / len(iter_vios_marked) if len(iter_vios_marked) > 0 else 1
-        recall = len(iter_vios_found) / len(iter_vios_total) if len(iter_vios_total) > 0 else 1
-        # print('vios found:', iter_vios_found)
-        # print('vios marked:', iter_vios_marked)
-        # print('vios total:', iter_vios_total)
-        # print('precision:', precision)
-        # print('recall:', recall)
-                    
         
         feedback = dict()
         for f in feedbackMap.keys():
@@ -354,7 +306,7 @@ def run(s, b_type, decision_type, stat_calc):
                     mark_prob += 0.05
                 elif mark_prob < 0.95:
                     mark_prob += 0.01
-                # print(iter_vios_marked)
+
                 if max_marked < 5:
                     max_marked += 1
 

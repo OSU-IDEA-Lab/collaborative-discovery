@@ -259,10 +259,7 @@ class Import(Resource):
         for idx in data.index:
             interaction_metadata['feedback_history'][int(idx)] = dict()
             for col in header:
-                # interaction_metadata[idx][col] = dict()
                 interaction_metadata['feedback_history'][int(idx)][col] = list()
-
-        # X = set()
         
         # Initialize hypothesis parameters
         fd_metadata = dict()
@@ -294,25 +291,8 @@ class Import(Resource):
             print('beta:', fd_m.beta)
             print('conf:', h['conf'])
 
-            # # Build the
-            # for i in data.index:
-            #     for j in data.index:
-            #         if i == j:
-            #             continue
-
-            #         X |= h['vio_pairs']
-                    
-            #         match = True if i not in h['vios'] and j not in h['vios'] else False
-
-            #         if match is True and ((i, j) not in X and (j, i) not in X):
-            #             if i < j:
-            #                 X.add((i, j))
-            #             else:
-            #                 X.add((j, i)) 
-
             fd_metadata[h['cfd']] = fd_m
 
-        # print(len(X))
         current_iter += 1
 
         study_metrics = dict()
@@ -324,7 +304,15 @@ class Import(Resource):
         study_metrics['all_err_f1'] = list()
         pickle.dump( study_metrics, open(new_project_dir + '/study_metrics.p', 'wb') )
 
+        # Initialize tuple metadata and value metadata objects
+        tuple_weights = dict()
+        for idx in range(0, len(data)):
+
+            # Tuple metadata
+            tuple_weights[idx] = 1/len(data)
+
         pickle.dump( interaction_metadata, open(new_project_dir + '/interaction_metadata.p', 'wb') )
+        pickle.dump( tuple_weights, open(new_project_dir + '/tuple_weights.p', 'wb') )
         pickle.dump( fd_metadata, open(new_project_dir + '/fd_metadata.p', 'wb') )
         pickle.dump( current_iter, open(new_project_dir + '/current_iter.p', 'wb') )
         pickle.dump( fd_metadata[target_fd].vio_pairs, open(new_project_dir + '/X.p', 'wb') )

@@ -289,7 +289,7 @@ def interpretFeedback(s_in, feedback, X, sample_X, project_id, current_iter, cur
     pickle.dump( fd_metadata, open('./store/' + project_id + '/fd_metadata.p', 'wb') )
 
 # Build a sample
-def buildSample(data, X, sample_size, project_id, current_iter, current_time):
+def buildSample(data, X, sample_size, project_id, current_iter, current_time, sampling_method='RANDOM'):
     # Load data
     fd_metadata = pickle.load( open('./store/' + project_id + '/fd_metadata.p', 'rb') )
     with open('./store/' + project_id + '/project_info.json', 'r') as f:
@@ -318,7 +318,11 @@ def buildSample(data, X, sample_size, project_id, current_iter, current_time):
     alt_h_sample_ratio = project_info['scenario']['alt_h_sample_ratio']
 
     # Get the sample
-    s_index, sample_X = returnTuples(data, tfd_m.vio_pairs, sample_size / 2, list(alt_h_vio_pairs), target_h_sample_ratio, alt_h_sample_ratio, current_iter)
+    if sampling_method == 'WEIGHTED':
+        s_index, sample_X = returnTuplesBasedOnFDWeights(data, sample_size, project_id)
+    else:
+        s_index, sample_X = returnTuples(data, tfd_m.vio_pairs, sample_size / 2, list(alt_h_vio_pairs), target_h_sample_ratio, alt_h_sample_ratio, current_iter)
+    
     s_out = data.loc[s_index, :]
 
     print('IDs of tuples in next sample:', s_out.index)
@@ -327,7 +331,7 @@ def buildSample(data, X, sample_size, project_id, current_iter, current_time):
 
 # Return the tuples and violations for the sample
 def returnTuples(data, X, sample_size, alt_h_vio_pairs, target_h_sample_ratio, alt_h_sample_ratio, current_iter):
-    s_out = list()
+    s_out = set()
     
     # Add vios to the sample that violate the alt but not the target
     if len(alt_h_vio_pairs) > math.ceil(alt_h_sample_ratio * sample_size):
@@ -335,10 +339,8 @@ def returnTuples(data, X, sample_size, alt_h_vio_pairs, target_h_sample_ratio, a
     else:
         alt_vios_out = alt_h_vio_pairs
     for (x, y) in alt_vios_out:
-        if x not in s_out:
-            s_out.append(x)
-        if y not in s_out:
-            s_out.append(y)
+        s_out.add(x)
+        s_out.add(y)
     
     # Add vios to the sample that violate the target but not the alt
     if len(X) > math.ceil(target_h_sample_ratio * sample_size):
@@ -346,37 +348,58 @@ def returnTuples(data, X, sample_size, alt_h_vio_pairs, target_h_sample_ratio, a
     else:
         target_vios_out = X
     for (x, y) in target_vios_out:
-        if x not in s_out:
-            s_out.append(x)
-        if y not in s_out:
-            s_out.append(y)
+        s_out.add(x)
+        s_out.add(y)
     
     # Add tuples to the sample that violate neither the target nor the alt
     for i in range(0, math.ceil((1-target_h_sample_ratio-alt_h_sample_ratio)*sample_size)):
         other_tups = random.sample(population=data.index.tolist(), k=2)
-        if other_tups[0] not in s_out:
-            if len([x for x in alt_h_vio_pairs if other_tups[0] in x]) == 0 and len([x for x in target_vios_out if other_tups[0] in x]) == 0:
-                s_out.append(other_tups[0])
-        if other_tups[1] not in s_out:
-            if len([x for x in alt_h_vio_pairs if other_tups[1] in x]) == 0 and len([x for x in target_vios_out if other_tups[1] in x]) == 0:
-                s_out.append(other_tups[1])
+        if len([x for x in alt_h_vio_pairs if other_tups[0] in x]) == 0 and len([x for x in target_vios_out if other_tups[0] in x]) == 0:
+            s_out.add(other_tups[0])
+        if len([x for x in alt_h_vio_pairs if other_tups[1] in x]) == 0 and len([x for x in target_vios_out if other_tups[1] in x]) == 0:
+            s_out.add(other_tups[1])
     
     # Shuffle the sample
     random.shuffle(s_out)
-    sample_X = set()
-    sample_all_vios = set()
+    sample_X = set()    # This is the set of true violation pairs in the sample
     for i1 in s_out:
         for i2 in s_out:
             tup = (i1, i2) if i1 < i2 else (i2, i1)
-            sample_all_vios.add(tup)
-            if tup in X:
+            if tup in X:    # If i1 and i2 together form a real violation pair, add it to sample_X
                 sample_X.add(tup)
-    
-    console.log('Ratios')
-    console.log(len(target_vios_out) / len(sample_all_vios))
-    console.log(len(alt_vios_out) / len(sample_all_vios))
 
-    return s_out, sample_X
+    return list(s_out), sample_X
+
+# RETURN TUPLES BASED ON WEIGHT
+def returnTuplesBasedOnFDWeights(data, sample_size, project_id):
+
+    # Get tuple and FD weights
+    tuple_weights = pickle.load( open('./store/' + project_id + '/tuple_weights.p', 'rb') )
+    fd_metadata = pickle.load( open('./store/' + project_id + '/fd_metadata.p', 'rb') )
+    fd_weights = {k: v['conf'] for k, v in fd_metadata.items()}
+
+    s_out = set()
+    
+    print('IDs of tuples in next sample:')
+    while len(s_out) < sample_size:
+        fd = random.choices(fd_weights.keys(), weights=fd_weights.values(), k=1).pop()  # Pick an FD to use for sampling, using weighted sampling
+        fd_m = fd_metadata[fd]
+        if len(fd_m['vios']) <= 1 or len(fd_m['vio_pairs']) == 0:   # If this FD has no violation pairs, pick two tuples based on tuple weights
+            returned_tuples = random.choices(tuple_weights.keys(), weights=tuple_weights.values(), k=2)
+            returned_tuple1, returned_tuple2 = returned_tuples[0], returned_tuples[1]
+        else:   # If this FD has at least one violation pair, pick 1 pair
+            returned_tuple1, returned_tuple2 = random.choice(fd_m['vio_pairs'])
+
+        # Add the tuples to the sample if they're not already in it
+        s_out.add(returned_tuple1)
+        s_out.add(returned_tuple2)
+
+        # If there are no more tuples left to pick in the dataset, stop picking tuples
+        if len(s_out) >= len(tuple_weights.keys()):
+            break
+    
+    sample_X = set()    # TODO: Build sample_X using s_out. sample_X is the set of true violation pairs in this sample
+    return list(s_out), sample_X
 
 
 
