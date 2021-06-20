@@ -11,6 +11,8 @@ import math
 import scipy.special as sc
 from scipy.stats import beta as betaD
 import re
+
+# FD Metadata object
 class FDMeta(object):
     def __init__(self, fd, a, b, support, vios, vio_pairs):
         self.lhs = fd.split(' => ')[0][1:-1].split(', ')
@@ -24,11 +26,13 @@ class FDMeta(object):
         self.vios = vios
         self.vio_pairs = vio_pairs
 
+# Calculate the initial probability mean for the FD
 def initialPrior(mu, variance):
     beta = (1 - mu) * ((mu * (1 - mu) / variance) - 1)
     alpha = (mu * beta) / (1 - mu)
     return alpha, beta
 
+# Build the feedback dictionary object that will be utilized during the interaction
 def buildFeedbackMap(data, feedback, header):
     feedbackMap = dict()
     cols = header
@@ -44,12 +48,16 @@ def buildFeedbackMap(data, feedback, header):
 def shuffleFDs(fds):
     return random.shuffle(fds)
 
+# s: scenario #
+# b_type: Bayesian type (i.e. what kind of user are we simulating)
+# decision_type: coin-flip or probability threshold decision making
+# stat_calc: are we evaluating precision or recall?
 def run(s, b_type, decision_type, stat_calc):
-    if b_type == 'oracle':
+    if b_type == 'oracle':  # Oracle user; always right
         p_max = 0.9
-    elif b_type == 'informed':
+    elif b_type == 'informed':  # Informed user; assuming has some background knowledge
         p_max = 0.9
-    else:
+    else:   # Uninformed user; assuming no prior knowledge
         p_max = 0.5
 
     if s is None:
@@ -65,6 +73,7 @@ def run(s, b_type, decision_type, stat_calc):
 
     iter_num = 0
     
+    # Get initial probabilities for FDs in hypothesis space and build their metadata objects
     for h in h_space:
         if h['cfd'] != target_fd:
             continue
@@ -100,14 +109,15 @@ def run(s, b_type, decision_type, stat_calc):
 
     project_id = None
 
+    # Start the interaction
     try:
         r = requests.post('http://localhost:5000/duo/api/import', data={
             'scenario_id': str(s),
             'email': '',
-            'initial_fd': 'Not Sure',
+            'initial_fd': 'Not Sure',   # TODO: Logic for what the simulated user thinks at first
             'fd_comment': '',
-            'skip_user': True,
-            'violation_ratio': 'close'
+            'skip_user': True,  # Skip user email handling since this is not part of the study
+            'violation_ratio': 'close'  # TODO: Add command-line argument for close or far violation ratio (e.g. 3:1 or 3:2). This may change.
         })
         print(r)
         res = r.json()
@@ -122,6 +132,7 @@ def run(s, b_type, decision_type, stat_calc):
     feedback = None
     sample_X = list()
 
+    # Get first sample
     try:
         print('before sample')
         r = requests.post('http://localhost:5000/duo/api/sample', data={'project_id': project_id})
@@ -160,15 +171,18 @@ def run(s, b_type, decision_type, stat_calc):
     vios_marked = set()
     vios_found = set()
 
+    # Get table column names
+    header = list()
+    for row in data.keys():
+        header = [c for c in data[row].keys() if c != 'id']
+        break
+
+    # Begin iterations
     while msg != '[DONE]':
         iter_num += 1
         print('iter:', iter_num)
         print(data.keys())
-        header = list()
-        for row in data.keys():
-            header = [c for c in data[row].keys() if c != 'id']
-            break
-        feedbackMap = buildFeedbackMap(data, feedback, header)
+        feedbackMap = buildFeedbackMap(data, feedback, header)  # Initialize feedback dictionary utilized during interaction
 
         # Bayesian behavior
         for fd, fd_m in fd_metadata.items():
@@ -197,7 +211,7 @@ def run(s, b_type, decision_type, stat_calc):
                 print('beta:', fd_m.beta)
 
         # Step 2: mark errors according to new beliefs
-        fd_m = fd_metadata[target_fd]
+        fd_m = fd_metadata[target_fd]   # Pick an FD to make decisions off of (i.e. hypothesize an FD). TODO: Don't just use target_fd
         q_t = fd_m.alpha / (fd_m.alpha + fd_m.beta) if b_type != 'oracle' else fd_m.conf
 
         iter_marked_rows = {i for i in marked_rows if str(i) in data.keys()}
@@ -207,6 +221,7 @@ def run(s, b_type, decision_type, stat_calc):
 
         print('q_t:', q_t)
 
+        # Decide for each row whether to mark or not
         for row in data.keys():
 
             if b_type == 'oracle':
@@ -218,15 +233,15 @@ def run(s, b_type, decision_type, stat_calc):
                 else:
                     continue
 
-            vios_w_i = {v for v in iter_vios_total if int(row) in v and v not in iter_vios_marked}
+            vios_w_i = {v for v in iter_vios_total if int(row) in v and v not in iter_vios_marked}  # Find all violations that involve this row
 
             if decision_type == 'coin-flip':
                 decision = np.random.binomial(1, q_t)
             else:
                 decision = 1 if q_t >= p_max else 0
 
-            if decision == 1:
-                if len(vios_w_i) > 0:
+            if decision == 1:   # User correctly figured out the truth for this tuple with respect to this FD
+                if len(vios_w_i) > 0:   # This tuple is involved in a violation of our hypothesized FD
                     for rh in fd_m.rhs:
                         feedbackMap[row][rh] = True
                     vios_found |= vios_w_i
@@ -238,15 +253,16 @@ def run(s, b_type, decision_type, stat_calc):
                     vios_marked.discard((int(row), int(row)))
                     iter_vios_marked.discard((int(row), int(row)))
                     
-                else:
+                else:   # This tuple has no violations of our hypothesized FD
                     for rh in fd_m.rhs:
                         feedbackMap[row][rh] = False
                     vios_marked.discard((int(row), int(row)))
                     iter_vios_marked.discard((int(row), int(row)))
                     marked_rows.discard(int(row))
                     iter_marked_rows.discard(int(row))
-            else:
-                if len(vios_w_i) > 0:
+            
+            else:   # User did not figure it out
+                if len(vios_w_i) > 0:   # This tuple is involved in a violation of our hypothesized FD
                     for rh in fd_m.rhs:
                         feedbackMap[row][rh] = False
                     vios_found -= vios_w_i
@@ -255,7 +271,8 @@ def run(s, b_type, decision_type, stat_calc):
                     iter_vios_marked -= vios_w_i
                     marked_rows.discard(int(row))
                     iter_marked_rows.discard(int(row))
-                else:
+                
+                else:   # This tuple has no violations of our hypothesized FD
                     for rh in fd_m.rhs:
                         feedbackMap[row][rh] = True
                     vios_marked.add((int(row), int(row)))
@@ -263,31 +280,23 @@ def run(s, b_type, decision_type, stat_calc):
                     marked_rows.add(int(row))
                     iter_marked_rows.add(int(row))
         
+        # Set up the feedback representation that will be given to the server
         feedback = dict()
         for f in feedbackMap.keys():
             feedback[data[f]['id']] = feedbackMap[f]
-
-        is_new_feedback = False
-        for idx in feedback.keys():
-            for col in feedback[idx].keys():
-                if feedback[idx][col] is True:
-                    is_new_feedback = True
-                    break
-            if is_new_feedback is True:
-                break
         
         formData = {
             'project_id': project_id,
             'feedback': json.dumps(feedback),
-            'current_user_h': 'Not Sure',
+            'current_user_h': 'Not Sure',   # TODO: Hypothesize an FD in the simulation in each iteration
             'user_h_comment': '',
         }
 
         try:
-            r = requests.post('http://localhost:5000/duo/api/feedback', data=formData)
+            r = requests.post('http://localhost:5000/duo/api/feedback', data=formData)  # Send feedback to server
             res = r.json()
             msg = res['msg']
-            if msg != '[DONE]':
+            if msg != '[DONE]': # Server says do another iteration
                 sample = res['sample']
                 sample_X = set(tuple(x) for x in res['X'])
                 feedback = json.loads(res['feedback'])
@@ -317,10 +326,10 @@ def run(s, b_type, decision_type, stat_calc):
     pickle.dump( fd_metadata, open('./store/' + project_id + '/fd_metadata.p', 'wb') )
 
 if __name__ == '__main__':
-    s = sys.argv[1]
-    b_type = sys.argv[2]
-    decision_type = sys.argv[3]
-    num_runs = int(sys.argv[4])
-    stat_calc = None if len(sys.argv) < 6 else sys.argv[5]
+    s = sys.argv[1] # Scenario #
+    b_type = sys.argv[2]    # Bayesian type ("oracle", "informed", "uninformed")
+    decision_type = sys.argv[3] # Decision type ("coin-flip" or "threshold")
+    num_runs = int(sys.argv[4]) # How many runs of this simulation to do
+    stat_calc = None if len(sys.argv) < 6 else sys.argv[5]  # Are we evaluating precision or recall?
     for i in range(0, num_runs):
         run(s, b_type, decision_type, stat_calc)
