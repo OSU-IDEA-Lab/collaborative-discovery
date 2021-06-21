@@ -966,10 +966,13 @@ def deriveStats(interaction_metadata, fd_metadata, h_space, study_metrics, dirty
                     marked_rows.add(x)
 
         marked_rows = [r for r in marked_rows]
+        # print(marked_rows)
+        # if len(marked_rows) > 0:
+        #     print(type(marked_rows[0]))
         
         target_sample_X_in_fd = {(x, y) for (x, y) in fd_metadata[target_fd]['vio_pairs'] if x in curr_sample and y in curr_sample}
-        target_relevant_vio_pairs = {(x, y) for (x, y) in target_sample_X_in_fd if x not in marked_rows and y not in marked_rows}
-        fd_metadata[target_fd]['vios_in_sample'].append({ 'iter_num': i, 'value': list(target_relevant_vio_pairs), 'elapsed_time': elapsed_time })
+        # target_relevant_vio_pairs = {(x, y) for (x, y) in target_sample_X_in_fd if x not in marked_rows and y not in marked_rows}
+        fd_metadata[target_fd]['vios_in_sample'].append({ 'iter_num': i, 'value': list(target_sample_X_in_fd), 'elapsed_time': elapsed_time })
         all_target_relevant_vio_pairs = set()
 
         oldest_iter = 0 if i < HP_MEMORY + 1 else (i - HP_MEMORY) - 1
@@ -997,17 +1000,16 @@ def deriveStats(interaction_metadata, fd_metadata, h_space, study_metrics, dirty
                 if x in marked_rows or y in marked_rows:
                     removed_pairs.add((x, y))
             
-            relevant_vio_pairs = {(x, y) for (x, y) in sample_X_in_fd if x not in marked_rows and y not in marked_rows}
             if fd != target_fd:
-                fd_m['vios_in_sample'].append({ 'iter_num': i, 'value': list(relevant_vio_pairs), 'elapsed_time': elapsed_time })
+                fd_m['vios_in_sample'].append({ 'iter_num': i, 'value': list(sample_X_in_fd), 'elapsed_time': elapsed_time })
             
             for ix in curr_sample:
-                if ix in marked_rows:
+                if str(ix) in marked_rows:
                     continue
                 # if i not in fd_m['vios']:
                 #     successes += 1
                 # else:
-                if len([x for x in relevant_vio_pairs if ix in x]) == 0:
+                if len([x for x in sample_X_in_fd if ix in x]) == 0:
                     successes += 1
                 else:
                     failures += 1
