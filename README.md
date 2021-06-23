@@ -9,10 +9,18 @@ For the UI and front-end implemenetation, check out the `ui` branch.
 ### Frontend
 - Lives in `ui/`
 - Implemented in React using Create React App and TypeScript
+- To run, enter `yarn start` in the `ui` directory.
 
 ### Backend
 - Lives in `server/`
 - Implement in Python with Flask RESTful
+- To run, enter the following commands in the `server` directory:
+  - `pip install -r requirements.txt`
+  - `python api.py`
+- To run BART to inject errors, ensure Postgres 11 is running on your machine and, in `server`, run the following command:
+  - `./BART/Bart_Engine/run.sh <path to XML egtask configuration file>`
+- To run the post-analysis evaluation script, run the following command in `server`:
+  - `python eval_h.py <real | sim> <scenario | user> <scenario # | user #>`
 
 #### `data/`
 - Datasets
