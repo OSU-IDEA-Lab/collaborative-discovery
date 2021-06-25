@@ -124,7 +124,7 @@ def output_reward(gt, model_output, fd_metadata):
 # Record user feedback
 def recordFeedback(data, feedback, vio_pairs, project_id, current_iter, current_time):
     interaction_metadata = pickle.load( open('./store/' + project_id + '/interaction_metadata.p', 'rb') )
-    study_metrics = pickle.load( open('./store/' + project_id + '/study_metrics.p', 'rb') )
+    # study_metrics = pickle.load( open('./store/' + project_id + '/study_metrics.p', 'rb') )
     start_time = pickle.load( open('./store/' + project_id + '/start_time.p', 'rb') )
 
     # Calculate elapsed time
@@ -142,95 +142,9 @@ def recordFeedback(data, feedback, vio_pairs, project_id, current_iter, current_
     # Store latest sample in sample history
     interaction_metadata['sample_history'].append(StudyMetric(iter_num=current_iter, value=[int(idx) for idx in feedback.keys()], elapsed_time=elapsed_time))
     print('*** Latest feedback saved ***')
-            
-    # Scoring function: score based on number of true errors correctly identified
-    with open('./store/' + project_id + '/project_info.json', 'r') as f:
-        project_info = json.load(f)
-        clean_dataset = pd.read_csv(project_info['scenario']['clean_dataset'], keep_default_na=False)
-    
-    iter_errors_found = 0
-    iter_errors_total = 0
-    iter_errors_marked = 0
-
-    all_errors_found = 0
-    all_errors_total = 0
-    all_errors_marked = 0
-
-    print(feedback)
-
-    # Track errors caught in each iteration (short-term), medium-term, and cumulatively (long-term)
-    mt_sample = set([int(i) for i in feedback.keys()])
-    if current_iter > 1:
-        mt_sample |= set(interaction_metadata['sample_history'][current_iter-2].value)
-    all_sample = set([int(i) for i in feedback.keys()])
-    for i in range(2, current_iter+1):
-        all_sample |= set(interaction_metadata['sample_history'][current_iter-i].value)
-    for idx in data.index:
-        for col in data.columns:
-            if data.at[idx, col] != clean_dataset.at[idx, col]:
-                if str(idx) in feedback.keys():
-                    iter_errors_total += 1
-                    if bool(feedback[str(idx)][col]) is True:
-                        iter_errors_found += 1
-                if idx in all_sample:
-                    all_errors_total += 1
-                    if interaction_metadata['feedback_history'][int(idx)][col][-1].marked is True:
-                        all_errors_found += 1
-            if interaction_metadata['feedback_history'][int(idx)][col][-1].marked is True:
-                if str(idx) in feedback.keys():
-                    iter_errors_marked += 1
-                if idx in all_sample:
-                    all_errors_marked += 1
-
-    print('*** Score updated ***')
-
-    with open('./store/' + project_id + '/project_info.json', 'w') as f:
-        json.dump(project_info, f)
-    print('*** Score saved ***')
 
     pickle.dump( interaction_metadata, open('./store/' + project_id + '/interaction_metadata.p', 'wb') )
     print('*** Interaction metadata updates saved ***')
-
-    # Calculate metrics related to errors
-    if iter_errors_marked > 0:
-        iter_err_precision = iter_errors_found / iter_errors_marked
-    else:
-        iter_err_precision = 0
-    
-    if iter_errors_total > 0:
-        iter_err_recall = iter_errors_found / iter_errors_total
-    else:
-        iter_err_recall = 0
-
-    if iter_err_precision > 0 and iter_err_recall > 0:
-        iter_err_f1 = 2 * (iter_err_precision * iter_err_recall) / (iter_err_precision + iter_err_recall)
-    else:
-        iter_err_f1 = 0
-
-    if all_errors_marked > 0:
-        all_err_precision = all_errors_found / all_errors_marked
-    else:
-        all_err_precision = 0
-    
-    if all_errors_total > 0:
-        all_err_recall = all_errors_found / all_errors_total
-    else:
-        all_err_recall = 0
-
-    if all_err_precision > 0 and all_err_recall > 0:
-        all_err_f1 = 2 * (all_err_precision * all_err_recall) / (all_err_precision + all_err_recall)
-    else:
-        all_err_f1 = 0
-
-    study_metrics['iter_err_precision'].append(StudyMetric(iter_num=current_iter, value=iter_err_precision, elapsed_time=elapsed_time))
-    study_metrics['iter_err_recall'].append(StudyMetric(iter_num=current_iter, value=iter_err_recall, elapsed_time=elapsed_time))
-    study_metrics['iter_err_f1'].append(StudyMetric(iter_num=current_iter, value=iter_err_f1, elapsed_time=elapsed_time))
-
-    study_metrics['all_err_precision'].append(StudyMetric(iter_num=current_iter, value=all_err_precision, elapsed_time=elapsed_time))
-    study_metrics['all_err_recall'].append(StudyMetric(iter_num=current_iter, value=all_err_recall, elapsed_time=elapsed_time))
-    study_metrics['all_err_f1'].append(StudyMetric(iter_num=current_iter, value=all_err_f1, elapsed_time=elapsed_time))
-
-    pickle.dump( study_metrics, open('./store/' + project_id + '/study_metrics.p', 'wb') )
 
 # Interpret user feedback and update alphas and betas for each FD in the hypothesis space
 def interpretFeedback(s_in, feedback, X, sample_X, project_id, current_iter, current_time, target_fd=None):
@@ -249,8 +163,8 @@ def interpretFeedback(s_in, feedback, X, sample_X, project_id, current_iter, cur
 
     # Calculate P(X | \theta_h) for each FD
     for fd_m in fd_metadata.values():
-        successes = 0
-        failures = 0
+        successes = 0   # number of tuples that are not in a violation of this FD in the sample
+        failures = 0    # number of tuples that ARE in a violation of this FD in the sample
 
         # Calculate which pairs have been marked and remove them from calculation
         removed_pairs = set()
@@ -361,14 +275,14 @@ def returnTuples(data, X, sample_size, alt_h_vio_pairs, target_h_sample_ratio, a
     
     # Shuffle the sample
     random.shuffle(s_out)
-    sample_X = set()    # This is the set of true violation pairs in the sample
-    for i1 in s_out:
-        for i2 in s_out:
-            tup = (i1, i2) if i1 < i2 else (i2, i1)
-            if tup in X:    # If i1 and i2 together form a real violation pair, add it to sample_X
-                sample_X.add(tup)
+    # sample_X = set()    # This is the set of true violation pairs in the sample
+    # for i1 in s_out:
+    #     for i2 in s_out:
+    #         tup = (i1, i2) if i1 < i2 else (i2, i1)
+    #         if tup in X:    # If i1 and i2 together form a real violation pair, add it to sample_X
+    #             sample_X.add(tup)
 
-    return list(s_out), sample_X
+    return list(s_out), target_vios_out
 
 # RETURN TUPLES BASED ON WEIGHT
 def returnTuplesBasedOnFDWeights(data, sample_size, project_id):
@@ -785,56 +699,70 @@ def checkForTermination(project_id):
 
 # Derive post-analysis stats and metrics
 def deriveStats(interaction_metadata, fd_metadata, h_space, study_metrics, dirty_dataset, clean_dataset, target_fd, max_iters=None):
-    feedback_history = interaction_metadata['feedback_history']
-    user_hypothesis_history = interaction_metadata['user_hypothesis_history']
-    study_metrics['st_vio_precision'] = list()
-    study_metrics['lt_vio_precision'] = list()
-    study_metrics['mt_vio_precision'] = list()
-    study_metrics['mt_2_vio_precision'] = list()
-    study_metrics['mt_3_vio_precision'] = list()
-    study_metrics['st_vio_recall'] = list()
+    feedback_history = interaction_metadata['feedback_history'] # User feedback history throughout interaction
+    user_hypothesis_history = interaction_metadata['user_hypothesis_history']   # The user's submitted hypothesis history
+
+    # st = short-term, lt = long-term, mt = mid-term (current + last sample), mt-2 = current + last 2 samples, mt-3 = current + last 3 samples
+    study_metrics['st_vio_precision'] = list()  # Short-term user precision (current sample only)
+    study_metrics['lt_vio_precision'] = list()  # Long-term user precision
+    study_metrics['mt_vio_precision'] = list()  # Mid-term (current + last sample) precision
+    study_metrics['mt_2_vio_precision'] = list()    # Mid-term (current + last 2) precision
+    study_metrics['mt_3_vio_precision'] = list()    # Mid-term (current + last 3) precision
+    study_metrics['st_vio_recall'] = list() # User recall
     study_metrics['lt_vio_recall'] = list()
     study_metrics['mt_vio_recall'] = list()
     study_metrics['mt_2_vio_recall'] = list()
     study_metrics['mt_3_vio_recall'] = list()
-    study_metrics['st_vio_f1'] = list()
+    study_metrics['st_vio_f1'] = list() # User f1-score
     study_metrics['lt_vio_f1'] = list()
     study_metrics['mt_vio_f1'] = list()
     study_metrics['mt_2_vio_f1'] = list()
     study_metrics['mt_3_vio_f1'] = list()
 
+    # Vios marked by the user
     study_metrics['st_vios_marked'] = list()
     study_metrics['mt_vios_marked'] = list()
     study_metrics['mt_2_vios_marked'] = list()
     study_metrics['mt_3_vios_marked'] = list()
     study_metrics['lt_vios_marked'] = list()
+
+    # True vios found by the user
     study_metrics['st_vios_found'] = list()
     study_metrics['mt_vios_found'] = list()
     study_metrics['mt_2_vios_found'] = list()
     study_metrics['mt_3_vios_found'] = list()
     study_metrics['lt_vios_found'] = list()
+
+    # All true vios shown to the user
     study_metrics['st_vios_total'] = list()
     study_metrics['mt_vios_total'] = list()
     study_metrics['mt_2_vios_total'] = list()
     study_metrics['mt_3_vios_total'] = list()
     study_metrics['lt_vios_total'] = list()
+
+    # Cumulative user recall, precision, and f1-score (noover = no overlap, i.e. count each violation only once. If it occurs between samples only consider the latest occurrence)
     study_metrics['cumulative_recall'] = list()
     study_metrics['cumulative_recall_noover'] = list()
     study_metrics['cumulative_precision'] = list()
     study_metrics['cumulative_precision_noover'] = list()
     study_metrics['cumulative_f1'] = list()
     study_metrics['cumulative_f1_noover'] = list()
+
+    # Bayesian and hypothesis testing predictions
     study_metrics['bayesian_prediction'] = [{ 'iter_num': user_hypothesis_history[0]['iter_num'], 'value': user_hypothesis_history[0]['value'][0], 'elapsed_time': user_hypothesis_history[0]['elapsed_time'] }]
     study_metrics['hp_prediction'] = [{ 'iter_num': user_hypothesis_history[0]['iter_num'], 'value': user_hypothesis_history[0]['value'][0], 'elapsed_time': user_hypothesis_history[0]['elapsed_time'] }]
     
-    study_metrics['bayesian_match_1'] = list()
+    # top-1 output
+    study_metrics['bayesian_match_1'] = list()  # top-1 perfect match boolean
     study_metrics['hp_match_1'] = list()
-    study_metrics['bayesian_match_mrr_1'] = list()
+    study_metrics['bayesian_match_mrr_1'] = list()  # top-1 perfect match MRR
     study_metrics['hp_match_mrr_1'] = list()
-    study_metrics['bayesian_match_penalty_1'] = list()
+    study_metrics['bayesian_match_penalty_1'] = list()  # top-1 perfect match boolean w/ subset/superset considerations
     study_metrics['hp_match_penalty_1'] = list()
-    study_metrics['bayesian_match_mrr_penalty_1'] = list()
+    study_metrics['bayesian_match_mrr_penalty_1'] = list()  # top-1 perfect match MRR w/ subset/superset considerations
     study_metrics['hp_match_mrr_penalty_1'] = list()
+
+    # top-3 output
     study_metrics['bayesian_match_3'] = list()
     study_metrics['hp_match_3'] = list()
     study_metrics['bayesian_match_mrr_3'] = list()
@@ -843,6 +771,8 @@ def deriveStats(interaction_metadata, fd_metadata, h_space, study_metrics, dirty
     study_metrics['hp_match_penalty_3'] = list()
     study_metrics['bayesian_match_mrr_penalty_3'] = list()
     study_metrics['hp_match_mrr_penalty_3'] = list()
+
+    # top-5 output
     study_metrics['bayesian_match_5'] = list()
     study_metrics['hp_match_5'] = list()
     study_metrics['bayesian_match_mrr_5'] = list()
@@ -852,11 +782,14 @@ def deriveStats(interaction_metadata, fd_metadata, h_space, study_metrics, dirty
     study_metrics['bayesian_match_mrr_penalty_5'] = list()
     study_metrics['hp_match_mrr_penalty_5'] = list()
 
+    # In first iteration, the best hypothesis is the user's initial prior
     max_h = user_hypothesis_history[0]['value'][0]
     num_not_sub_super = len([h for h in h_space if max_h != 'Not Sure' and (\
         not set(h['cfd'].split(' => ')[0][1:-1].split(', ')).issubset(set(max_h.split(' => ')[0][1:-1].split(', '))) and \
         not set(h['cfd'].split(' => ')[1].split(', ')).issuperset(set(max_h.split(' => ')[1].split(', '))))])
     console.log(num_not_sub_super)
+
+    # Make sure the user's hypothesis maps in form to one of the FDs in the hypothesis space
     for h in h_space:
         lhs = set(h['cfd'].split(' => ')[0][1:-1].split(', '))
         rhs = set(h['cfd'].split(' => ')[1].split(', '))
@@ -883,9 +816,8 @@ def deriveStats(interaction_metadata, fd_metadata, h_space, study_metrics, dirty
                 except StopIteration as e:
                     console.log(e)
                     return
-                # console.log(fd_metadata[max_h]['conf'])
 
-        # mu = h['conf'] if h['cfd'] != max_h else 1
+        # Derive initial alpha and beta of the FD's Beta distribution
         variance = 0.0025
         if max_h == 'Not Sure':
             alpha = 1
@@ -922,6 +854,8 @@ def deriveStats(interaction_metadata, fd_metadata, h_space, study_metrics, dirty
     else:
         iters = range(1, len(interaction_metadata['sample_history'])+1)
     for i in iters:
+
+        # Calculate metrics about user labeling accuracy
         st_vios_found = set()
         st_vios_total = set()
         st_vios_marked = set()
@@ -965,13 +899,9 @@ def deriveStats(interaction_metadata, fd_metadata, h_space, study_metrics, dirty
                 if feedback[x][y] is True and x not in marked_rows:
                     marked_rows.add(x)
 
-        marked_rows = [r for r in marked_rows]
-        # print(marked_rows)
-        # if len(marked_rows) > 0:
-        #     print(type(marked_rows[0]))
+        marked_rows = [int(r) for r in marked_rows]
         
         target_sample_X_in_fd = {(x, y) for (x, y) in fd_metadata[target_fd]['vio_pairs'] if x in curr_sample and y in curr_sample}
-        # target_relevant_vio_pairs = {(x, y) for (x, y) in target_sample_X_in_fd if x not in marked_rows and y not in marked_rows}
         fd_metadata[target_fd]['vios_in_sample'].append({ 'iter_num': i, 'value': list(target_sample_X_in_fd), 'elapsed_time': elapsed_time })
         all_target_relevant_vio_pairs = set()
 
@@ -979,6 +909,7 @@ def deriveStats(interaction_metadata, fd_metadata, h_space, study_metrics, dirty
         for it in range(oldest_iter, i):
             all_target_relevant_vio_pairs |= set(fd_metadata[target_fd]['vios_in_sample'][it]['value'])
 
+        # Update each FD's Beta distribution
         for h in h_space:
             fd = h['cfd']
             lhs = set(fd.split(' => ')[0][1:-1].split(', '))
@@ -997,22 +928,31 @@ def deriveStats(interaction_metadata, fd_metadata, h_space, study_metrics, dirty
             removed_pairs = set()
             sample_X_in_fd = {(x, y) for (x, y) in fd_m['vio_pairs'] if x in curr_sample and y in curr_sample}
             for x, y in sample_X_in_fd:
-                if x in marked_rows or y in marked_rows:
-                    removed_pairs.add((x, y))
+                if int(x) in marked_rows or int(y) in marked_rows:
+                    removed_pairs.add((int(x), int(y)))
             
             if fd != target_fd:
                 fd_m['vios_in_sample'].append({ 'iter_num': i, 'value': list(sample_X_in_fd), 'elapsed_time': elapsed_time })
             
+            # for ix in curr_sample:
+            #     if str(ix) in marked_rows:
+            #         continue
+            #     if len([x for x in sample_X_in_fd if ix in x and x not in removed_pairs]) == 0:
+            #         successes += 1  # S
+            #     else:
+            #         failures += 1
+
+            # Calculate successes and failures (to use for updating alpha and beta)
             for ix in curr_sample:
-                if str(ix) in marked_rows:
+                if ix in marked_rows:
                     continue
-                # if i not in fd_m['vios']:
-                #     successes += 1
-                # else:
-                if len([x for x in sample_X_in_fd if ix in x]) == 0:
+                if ix not in fd_m['vios']:  # tuple is clean
                     successes += 1
                 else:
-                    failures += 1
+                    if len([x for x in removed_pairs if ix in x]) > 0:   # tuple is dirty but it's part of a vio that the user caught (i.e. they marked the wrong tuple as the error but still found the vio)
+                        successes += 1
+                    else:   # tuple is dirty and they missed the vio, or the vio isn't in a pair in the sample
+                        failures += 1
 
             fd_m['alpha'] += successes
             fd_m['beta'] += failures
@@ -1022,6 +962,7 @@ def deriveStats(interaction_metadata, fd_metadata, h_space, study_metrics, dirty
             fd_m['beta_history'].append({ 'iter_num': i, 'value': fd_m['beta'], 'elapsed_time': elapsed_time })
             fd_m['conf_history'].append({ 'iter_num': i, 'value': fd_m['conf'], 'elapsed_time': elapsed_time })
 
+            # Calculate this FD's precision, recall, and f1-score over the observed data
             all_relevant_vio_pairs = set()
             for it in range(oldest_iter, i):
                 all_relevant_vio_pairs |= set(fd_m['vios_in_sample'][it]['value'])
@@ -1071,15 +1012,6 @@ def deriveStats(interaction_metadata, fd_metadata, h_space, study_metrics, dirty
             except StopIteration as e:
                 console.log(e)
                 return
-            
-            bayesian_match_3 = 0
-            bayesian_match_penalty_3 = 0
-            bayesian_match_mrr_3 = 0
-            bayesian_match_mrr_penalty_3 = 0
-            bayesian_match_5 = 0
-            bayesian_match_penalty_5 = 0
-            bayesian_match_mrr_5 = 0
-            bayesian_match_mrr_penalty_5 = 0
             
             bayesian_output = [
                 {

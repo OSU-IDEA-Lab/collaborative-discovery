@@ -245,7 +245,7 @@ class Import(Resource):
 
         data = pd.read_csv(scenario['dirty_dataset'])
         header = [col for col in data.columns]
-        random.shuffle(header)
+        # random.shuffle(header)
 
         # Initialize the iteration counter
         current_iter = 0
@@ -268,10 +268,10 @@ class Import(Resource):
 
             # Calculate the mean and variance
             h['vio_pairs'] = set(tuple(vp) for vp in h['vio_pairs'])
-            mu = h['conf']
+            mu = h['conf']      # h['conf'] = # tuples that satisfy FD / # tuples total
             if mu == 1:
                 mu = 0.99999
-            variance = 0.0025
+            variance = 0.0025   # hyperparameter
             
             # Calculate alpha and beta
             alpha, beta = helpers.initialPrior(mu, variance)
@@ -350,7 +350,7 @@ class Sample(Resource):
         # Get data
         data = pd.read_csv(project_info['scenario']['dirty_dataset'], keep_default_na=False)
         current_iter = pickle.load( open('./store/' + project_id + '/current_iter.p', 'rb') )
-        X = pickle.load( open('./store/' + project_id + '/X.p', 'rb') )
+        X = pickle.load( open('./store/' + project_id + '/X.p', 'rb') ) # list of true violation pairs (vio pairs for target FD)
         
         # Build sample
         s_out, sample_X = helpers.buildSample(data, X, sample_size, project_id, current_iter, start_time)
@@ -378,8 +378,6 @@ class Sample(Resource):
             'sample': s_out.to_json(orient='index'),
             'X': [list(v) for v in sample_X],
             'feedback': json.dumps(feedback),
-            'true_pos': 0,
-            'false_pos': 0,
             'msg': '[SUCCESS] Successfully built sample.'
         }
         return response, 200, {'Access-Control-Allow-Origin': '*'}
