@@ -9,7 +9,8 @@ For the UI and front-end implemenetation, check out the `ui` branch.
 ### Frontend
 - Lives in `ui/`
 - Implemented in React using Create React App and TypeScript
-- To run, enter `yarn start` in the `ui` directory.
+- To install dependencies, enter `yarn install` or `npm install` in the `ui` directory.
+- To run, enter `yarn start` or `npm start` in the `ui` directory.
 
 ### Backend
 - Lives in `server/`
