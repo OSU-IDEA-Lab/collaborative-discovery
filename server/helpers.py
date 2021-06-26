@@ -9,6 +9,7 @@ from rich.console import Console
 console = Console()
 BAYESIAN_SMOOTHING = 0.15    # Bayesian model hyperparameter
 HP_MEMORY = 1  # Hypothesis testing model hyperparameter
+DECISION_THRESHOLD = 0.8  # Score threshold at which the user switches their hypothesis
 
 # CellFeedback: An instance of feedback for a particular cell
 class CellFeedback(object):
@@ -997,6 +998,13 @@ def deriveStats(interaction_metadata, fd_metadata, h_space, study_metrics, dirty
         # Get output from models
         max_h_bayesian = heapq.nlargest(5, fd_metadata.keys(), key=lambda x: fd_metadata[x]['conf'])
         max_h_hp = heapq.nlargest(5, fd_metadata.keys(), key=lambda x: fd_metadata[x]['f1_history'][-1]['value'])
+        
+        # If FD scores in model output are not sufficiently strong, user does not change their mind
+        if fd_metadata[max_h_bayesian[0]]['conf'] < DECISION_THRESHOLD:
+            max_h_bayesian = [max_h] if i == 1 else study_metrics['bayesian_prediction'][-1]['value']
+        if fd_metadata[max_h_hp][0]['f1_history'][-1]['value'] < DECISION_THRESHOLD:
+            max_h_hp = [max_h] if i == 1 else study_metrics['hp_prediction'][-1]['value']
+        
         study_metrics['bayesian_prediction'].append({ 'iter_num': i, 'value': max_h_bayesian, 'elapsed_time': elapsed_time })
         study_metrics['hp_prediction'].append({ 'iter_num': i, 'value': max_h_hp, 'elapsed_time': elapsed_time })
 
