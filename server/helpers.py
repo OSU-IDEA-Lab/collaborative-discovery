@@ -9,7 +9,7 @@ from rich.console import Console
 console = Console()
 BAYESIAN_SMOOTHING = 0.15    # Bayesian model hyperparameter
 HP_MEMORY = 1  # Hypothesis testing model hyperparameter
-HP_DECISION_THRESHOLD = 0.8  # Score threshold at which the user switches their hypothesis
+HP_DECISION_THRESHOLD = 0.98  # Score threshold at which the user switches their hypothesis
 
 # CellFeedback: An instance of feedback for a particular cell
 class CellFeedback(object):
@@ -95,6 +95,9 @@ class FDMeta(object):
 
 # output_reward: Takes the ground truth FD (user hypothesis), model output, and FD metadata store and calculates model rewards
 def output_reward(gt, model_output, fd_metadata):
+    if len(model_output) == 0:
+        return 0, 0, 0, 0
+    
     gt_lhs = set(gt.split(' => ')[0][1:-1].split(', '))
     gt_rhs = set(gt.split(' => ')[1].split(', '))
 
@@ -1000,8 +1003,14 @@ def deriveStats(interaction_metadata, fd_metadata, h_space, study_metrics, dirty
         max_h_hp = heapq.nlargest(5, fd_metadata.keys(), key=lambda x: fd_metadata[x]['f1_history'][-1]['value'])
         
         # Hypothesis testing: if FD scores in model output are not sufficiently strong, user does not change their mind
-        if fd_metadata[max_h_hp][0]['f1_history'][-1]['value'] < HP_DECISION_THRESHOLD:
-            max_h_hp = [max_h] if i == 1 else study_metrics['hp_prediction'][-1]['value']
+        # if fd_metadata[max_h_hp[0]]['f1_history'][-1]['value'] < HP_DECISION_THRESHOLD:
+        #     max_h_hp = [max_h] if i == 1 else study_metrics['hp_prediction'][-1]['value']
+        try:
+            user_h_in_hp = next(h for h in max_h_hp if h == user_hypothesis_history[i]['value'][0])
+            if fd_metadata[user_h_in_hp]['f1_history'][-1]['value'] < HP_DECISION_THRESHOLD:
+                max_h_hp = [max_h] if i == 1 and max_h != 'Not Sure' else [] if i == 1 else study_metrics['hp_prediction'][-1]['value']
+        except:
+            max_h_hp = [max_h] if i == 1 and max_h != 'Not Sure' else [] if i == 1 else study_metrics['hp_prediction'][-1]['value']
         
         study_metrics['bayesian_prediction'].append({ 'iter_num': i, 'value': max_h_bayesian, 'elapsed_time': elapsed_time })
         study_metrics['hp_prediction'].append({ 'iter_num': i, 'value': max_h_hp, 'elapsed_time': elapsed_time })
