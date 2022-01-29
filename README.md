@@ -1,6 +1,6 @@
 # Modeling Human Learning of Data Quality Rules
 
-## Omeed's Master's thesis. Submission pending, expected June 2021.
+## Omeed's Master's thesis. Submitted June 7, 2021.
 
 For the server and backend setup of the system, check out the `server` branch.
 
