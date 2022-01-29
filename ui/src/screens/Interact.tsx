@@ -3,8 +3,6 @@ import React, { FC, useState, useEffect } from 'react'
 import { useHistory, useLocation } from 'react-router-dom'
 import {
     Button,
-    Form,
-    Modal,
     Loader,
     Container,
     Grid,
@@ -13,9 +11,7 @@ import {
     Table,
     Message,
     Divider,
-    Header,
     Input,
-    Radio,
     Checkbox,
     Dropdown
 } from 'semantic-ui-react'
@@ -29,7 +25,7 @@ export const Interact: FC<InteractProps> = () => {
 
     const history = useHistory()
     const location = useLocation()
-    const { email, scenario_id, project_id, description, header, scenarios } = location.state as any
+    const { email, scenario_id, project_id, header, scenarios } = location.state as any
 
     const [data, setData] = useState<{[key: string]: string}[]>([])
     const [feedback, setFeedback] = useState<any[]>([])
@@ -42,8 +38,8 @@ export const Interact: FC<InteractProps> = () => {
     const [rhs, setRHS] = useState<string[]>([])
     const [fdComment, setFDComment] = useState<string>('')
     const [doesntKnowFD, setDoesntKnowFD] = useState<boolean>(false)
-    const [done, setDone] = useState<boolean>(false)
     
+    // Initialize the FD dictionary
     useEffect(() => {
         const init_fd: {[key: string]: string} = {}
         header.forEach((h: string) => init_fd[h] = 'N/A')
@@ -61,7 +57,7 @@ export const Interact: FC<InteractProps> = () => {
         // get sample
         server.post('/sample', { project_id })
             .then((response: AxiosResponse) => {
-                const { sample, msg } = response.data
+                const { sample } = response.data
                 const fdbck = JSON.parse(response.data.feedback)
 
                 const sample_object = JSON.parse(sample)
@@ -84,25 +80,17 @@ export const Interact: FC<InteractProps> = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
+    /** Handle the user indicating they're done with this scenario */
     const handleDone = async () => {
-        setProcessing(true)
-        // const answers = { fd, durationNeeded }
+        setProcessing(true) // turn on the processing indicator
         let header: string[]
         const response: AxiosResponse = await server.post('/post-interaction', {
             next_scenario_id: scenarios.length > 0 ? scenarios[0].toString() : '0',
             prev_scenario_id: scenario_id.toString(),
             email,
-        })
+        }) // Get the schema for the next scenario
         header = response.data.header
 
-        
-        // if (response.status === 201) {
-        //     setHeader(response.data.header)
-        //     setQuizDone(true)
-        // } else {
-        //     console.error(response.status)
-        //     console.error(response.data.msg)
-        // }
         const idx: number = scenarios.findIndex((s: number) => s === parseInt(scenario_id))
         setProcessing(false)
         if (idx === -1) {
@@ -111,56 +99,61 @@ export const Interact: FC<InteractProps> = () => {
                 scenarios,
                 scenario_id,
                 header,
-            })
+            }) // Go to the Post-Interaction page, where the user can preview the next scenario
         }
     }
 
+    /** Process the new data sample */
     const prepareSample = (sample: any) => {
         const rows: any[] = Object.values(sample)
         for (let i = 0; i < rows.length; i++) {
             for (let j in rows[i]) {
-                if (j === 'id') continue
-                if (rows[i][j] === null) rows[i][j] = ''
-                else if (typeof rows[i][j] != 'string') rows[i][j] = rows[i][j].toString()
+                if (j === 'id') continue // Prune "id" fields
+                if (rows[i][j] === null) rows[i][j] = '' // Replace null cells with empty strings
+                else if (typeof rows[i][j] != 'string') rows[i][j] = rows[i][j].toString() // Replace non-strings with stringified versions of themselves
                 if (!isNaN(parseInt(rows[i][j])) && Math.ceil(parseFloat(rows[i][j])) - parseFloat(rows[i][j]) === 0) {
                     rows[i][j] = Math.ceil(parseInt(rows[i][j])).toString();
-                }
+                } // Round up decimals and turn them into strings
             }
         }
         return rows
     }
 
+    /** Build the user feedback map (what the user has marked/not marked) */
     const buildFeedbackMap = (sample: any, fdbck: any) => {
         const feedback_map: any = {}
-        const rows = Object.keys(sample)
-        const cols = ['id', ...header]
+        const rows = Object.keys(sample) // Get the list of rows
+        const cols = ['id', ...header] // Get the columns
         for (let i = 0; i < rows.length; i++) {
             var tup: any = {}
             for (let j = 0; j < cols.length; j++) {
                 var cell = fdbck.find((e: any) => {
                     var trimmedCol = cols[j].replace(/[\n\r]+/g, '')
                     return e.row === parseInt(sample[rows[i]]['id']) && e.col === trimmedCol
-                })
-                tup[cols[j]] = cell.marked
+                }) // find the cell in the feedback object retrieved from the backend
+                tup[cols[j]] = cell.marked // updated the marked status of the cell
             }
             feedback_map[rows[i]] = tup
         }
         return feedback_map
     }
 
+    /** Handle a cell being clicked */
     const handleCellClick = async (key: string) => {
-        // handle cell click
+        // get the index number for the cell
         const pieces: string[] = key.split('_')
-
         const idx: number = parseInt(pieces.shift() || '-1')
         if (idx === -1) return
         const id: number = parseInt(data[idx]['id'])
-        const attr: string = pieces.join('_')
+
+        const attr: string = pieces.join('_') // get the attribute
         const fdbck: any = [...feedback]
         const cell = fdbck.findIndex((e: any) => {
             const trimmedCol: string = attr.replace(/[\n\r]+/g, '')
             return e.row === id && e.col === trimmedCol
-        })
+        }) // find the cell in the feedback map
+
+        // toggle the marked status of the cell for both the map used in the UI and the map used for the backend
         fdbck[cell].marked = !fdbck[cell].marked
         const feedback_map = {...feedbackMap}
         feedback_map[idx][attr] = !feedback_map[idx][attr]
@@ -168,8 +161,9 @@ export const Interact: FC<InteractProps> = () => {
         setFeedback(fdbck)
     }
 
+    /** Handle the user submtting their feedback in this iteration of the interaction */
     const handleSubmit = async (isDone: boolean) => {
-        if (isDone) {
+        if (isDone) { // if the user's done, end the interaction
             handleDone()
             return
         }
@@ -179,13 +173,16 @@ export const Interact: FC<InteractProps> = () => {
         const fdbck: any = {}
         for (let i = 0; i < data.length; i++) {
             fdbck[data[i]['id']] = feedbackMap[i]
-        }
+        } // build the feedback object used for the backend
+
+        // build the user's FD hypothesis string
         const lhs: string[] = Object.keys(fd).filter((k: string) => fd[k] === 'LHS')
         lhs.sort()
         const rhs: string[] = Object.keys(fd).filter((k: string) => fd[k] === 'RHS')
         rhs.sort()
         const current_user_h: string = `(${lhs.join(', ')}) => ${rhs.join(', ')}`
-        console.log(current_user_h)
+
+        // Send the user's feedback back to the backend for parsing, and get a new sample
         const response: AxiosResponse = await server.post(
             '/feedback',
             {
@@ -197,8 +194,11 @@ export const Interact: FC<InteractProps> = () => {
         )
         const { msg } = response.data
         if (msg === '[DONE]') {
+            // The backend determined the user is done
+            // (usually meansthey reached the maximum number of iterations)
             handleDone()
         } else {
+            // Process new sample and feedback map
             const { sample } = response.data
             const new_fdbck = JSON.parse(response.data.feedback)
             const sample_object = JSON.parse(sample)
@@ -209,6 +209,8 @@ export const Interact: FC<InteractProps> = () => {
                 sorting[h] = 'NONE'
             })
             const iter = iterCount + 1
+
+            // Re-initialize the FD hypothesis map
             const re_init_fd: {[key: string]: string} = {}
             header.forEach((h: string) => re_init_fd[h] = 'N/A')
             setFDComment('')
@@ -218,20 +220,18 @@ export const Interact: FC<InteractProps> = () => {
             setSortMethod(sorting)
             setProcessing(false)
             setData(prepped_data)
-            // setFD(re_init_fd)
             setDoesntKnowFD(false)
-            // setLHS([])
-            // setRHS([])
         }
     }
 
+    /** Handle an update in how an attribute is sorted in the table */
     const handleSort = async (attr: string) => {
-        const method = {...sortMethod}
+        const method = {...sortMethod} // get the sorting method map
         let feedback_map: {[key: string]: {[key: string]: boolean}} = {}
         const sample: {[key: string]: string}[] = data
-        // handle sort change for attr
+        // handle sort change for this attribute
         switch (method[attr]) {
-            case 'NONE':
+            case 'NONE': // no sorting, back to default of ascending with respect to this attribute
                 header.forEach((h: string) => {
                     if (h === attr) {
                         method[h] = 'ASC'
@@ -242,24 +242,22 @@ export const Interact: FC<InteractProps> = () => {
                     return a[attr] > b[attr] ? 1 : -1
                 })
                 break
-            case 'DESC':
+            case 'DESC': // descending sort with respect to this attribute
                 header.forEach((h: string) => {
                     if (h === attr) {
                         method[h] = 'ASC'
                     } else method[h] = 'NONE'
                 })
-                // ascending sort
                 sample.sort((a: any, b: any) => {
                     return a[attr] > b[attr] ? 1 : -1
                 })
                 break
-            case 'ASC':
+            case 'ASC': // ascending sort with respect to this attribute
                 header.forEach((h: string) => {
                     if (h === attr) {
                         method[h] = 'DESC'
                     } else method[h] = 'NONE'
                 })
-                // ascending sort
                 sample.sort((a: any, b: any) => {
                     return a[attr] < b[attr] ? 1 : -1
                 })
@@ -267,31 +265,37 @@ export const Interact: FC<InteractProps> = () => {
             default:
                 break
         }
+
+        // save sorted data maps
         feedback_map = buildFeedbackMap(sample, feedback)
         setSortMethod(method)
         setFeedbackMap(feedback_map)
         setData(sample)
     }
 
+    /** Test the user's FD hypothesis */
     const isValidFD = () => {
+        // Valid FD must have at least one attribute on both the LHS and RHS
         return Object.keys(fd).filter((k: string) => fd[k] === 'LHS').length !== 0
         && Object.keys(fd).filter((k: string) => fd[k] === 'RHS').length !== 0
     }
 
+    /** Update the user's FD hypothesis */
     const buildFD = (attrs: any, side: 'LHS' | 'RHS') => {
         if (attrs) {
-            console.log(attrs)
+            // Get the user's current hypothesis
             const fresh_fd: {[key: string]: string} = {}
             header.forEach((h: string) => {
                 fresh_fd[h] = fd[h]
             })
             attrs.forEach((attr: string) => {
                 fresh_fd[attr] = side
-            })
+            }) // Update the location of this attribute in the FD
             header.forEach((h: string) => {
                 if (!attrs.includes(h) && fresh_fd[h] === side) fresh_fd[h] = 'N/A'
-            })
-            console.log(fresh_fd)
+            }) // Mark removed attributes as N/A
+ 
+            // save the FD
             if (side === 'LHS') setLHS(attrs)
             else setRHS(attrs)
             setFD(fresh_fd)

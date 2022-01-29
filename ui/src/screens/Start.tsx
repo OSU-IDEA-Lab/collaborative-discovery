@@ -1,10 +1,8 @@
 import { AxiosResponse } from 'axios'
-import { url } from 'node:inspector'
-import React, { FC, useEffect, useRef, useState } from 'react'
+import React, { FC, useEffect, useState } from 'react'
 import { useHistory, useLocation } from 'react-router-dom'
 import {
     Button,
-    Image,
     Loader,
     Container,
     Grid,
@@ -12,9 +10,7 @@ import {
     Segment,
     Message,
     Divider,
-    List,
     Table,
-    Tab,
     Form,
     Radio,
     Input,
@@ -32,22 +28,25 @@ export const Start: FC<StartProps> = () => {
     const location = useLocation()
     const { email, scenarios, status } = location.state as any
 
-    const [processing, setProcessing] = useState<boolean>(false)
-    const [interfaceGuideRead, setInterfaceGuideRead] = useState<boolean>(false)
-    const [dataOverviewRead, setDataOverviewRead] = useState<boolean>(false)
-    const [fdReviewRead, setFDReviewRead] = useState<boolean>(false)
-    const [quizQ1Done, setQuizQ1Done] = useState<boolean>(false)
-    const [quizFullDone, setQuizFullDone] = useState<boolean>(false)
-    const [quizAnswersReviewed, setQuizAnswersReviewed] = useState<boolean>(false)
-    const [header, setHeader] = useState<string[]>([])
-    const [fd, setFD] = useState<{[key: string]: string}>({})
-    const [doesntKnowFD, setDoesntKnowFD] = useState<boolean>(false)
-    const [fdComment, setFDComment] = useState<string>('')
+    const [processing, setProcessing] = useState<boolean>(false) // The visibility of the processing indicator
+    const [interfaceGuideRead, setInterfaceGuideRead] = useState<boolean>(false) // Whether or not the interface guide has been read
+    const [dataOverviewRead, setDataOverviewRead] = useState<boolean>(false) // Whether or not the data overview has been read
+    const [fdReviewRead, setFDReviewRead] = useState<boolean>(false) // Whether or not the FD review has been read
+    const [quizQ1Done, setQuizQ1Done] = useState<boolean>(false) // Whether or not the user has completed Question 1 of the knowledge check
+    const [quizFullDone, setQuizFullDone] = useState<boolean>(false) // Whether or not the user has completed the knowledge check
+    const [quizAnswersReviewed, setQuizAnswersReviewed] = useState<boolean>(false) // Whether or not the user answered all questions in the knowledge check
+    const [header, setHeader] = useState<string[]>([]) // The schema for the user's first interaction
+    const [fd, setFD] = useState<{[key: string]: string}>({}) // The user's initial FD hypothesis
+    const [doesntKnowFD, setDoesntKnowFD] = useState<boolean>(false) // Whether or not the user has any idea about the initial FD
+    const [fdComment, setFDComment] = useState<string>('') // Any comment the user has left about their initial FD hypothesis
 
+    /** Define the user's responses to the knowledge check questions, as well as the correct answers to those questions */
     const [q1Response, setQ1Response] = useState<string>('')
     const q1CorrectAnswer = 'name'
     const [q2Response, setQ2Response] = useState<string>('')
     const q2CorrectAnswers = ['4_305', '6_305', '4_FL', '6_CA']
+
+    /** Define the details of each scenario */
     const scenarioDetails: {[key: number]: {[key: string]: string | null }} = {
         15: {
             domain: 'Movie',
@@ -96,12 +95,14 @@ export const Start: FC<StartProps> = () => {
         }
     }
 
+    /** Initialize the FD map for this schema */
     useEffect(() => {
         const init_fd: {[key: string]: string} = {}
         header.forEach((h: string) => init_fd[h] = 'N/A')
         setFD(init_fd)
     }, [header])
 
+    /** The user is resuming their work in a scenario; get the schema for that dataset */
     useEffect(() => {
         if (status === 'resume') {
             const first_scenario: number = scenarios[0] as number
@@ -112,8 +113,10 @@ export const Start: FC<StartProps> = () => {
                 setHeader(response.data.header)
             }).catch((err) => console.error(err))
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
+    /** Submit the user's knowledge check responses */
     const handleQuizDone = async () => {
         setProcessing(true)
         const answers = [
@@ -133,27 +136,30 @@ export const Start: FC<StartProps> = () => {
             email,
             scenario_id: first_scenario.toString(),
             answers
-        })
+        }) // Send answers to the backend and get the schema for this scenario
         setQuizFullDone(true)
         setHeader(response.data.header)
         setProcessing(false)
     }
 
+    /** Handle the user indicating they're ready to begin the first interaction */
     const handleReady = async () => {
-        setProcessing(true)
+        setProcessing(true) // show the processing indicator
         const first_scenario: number = scenarios.splice(0, 1) as number
-        const lhs: string[] = Object.keys(fd).filter((k: string) => fd[k] === 'LHS')
+
+        // Build the user's initial FD guess
+        const lhs: string[] = Object.keys(fd).filter((k: string) => fd[k] === 'LHS') // Get the LHS
         lhs.sort()
-        const rhs: string[] = Object.keys(fd).filter((k: string) => fd[k] === 'RHS')
+        const rhs: string[] = Object.keys(fd).filter((k: string) => fd[k] === 'RHS') // Get the RHS
         rhs.sort()
-        const initial_fd: string = `(${lhs.join(', ')}) => ${rhs.join(', ')}`
+        const initial_fd: string = `(${lhs.join(', ')}) => ${rhs.join(', ')}` // Build the FD
         console.log(initial_fd)
         const response: AxiosResponse = await server.post('/import', {
             email,
             scenario_id: first_scenario.toString(),
             initial_fd: doesntKnowFD ? 'Not Sure' : initial_fd,
             fd_comment: fdComment,
-        })
+        }) // Send the user's initial FD guess to the backend
         const { project_id, description } = response.data
         history.push('/interact', {
             email,
@@ -162,32 +168,36 @@ export const Start: FC<StartProps> = () => {
             header,
             project_id,
             description
-        })
+        }) // Go the interaction page
         setProcessing(false)
     }
 
+    // Check if the user has built a valid functional dependency
     const isValidFD = () => {
+        // The FD must have at least one attribute on the LHS and at least on the RHS
         return Object.keys(fd).filter((k: string) => fd[k] === 'LHS').length > 0
         && Object.keys(fd).filter((k: string) => fd[k] === 'RHS').length > 0
     }
 
+    /** Build or update the user's hypothesized FD */
     const buildFD = (attrs: any, side: 'LHS' | 'RHS') => {
         if (attrs) {
             const fresh_fd: {[key: string]: string} = {}
             header.forEach((h: string) => {
                 fresh_fd[h] = fd[h]
-            })
+            }) // Get the current FD
             attrs.forEach((attr: string) => {
                 fresh_fd[attr] = side
-            })
+            }) // Update the FD for the provided attributes
             header.forEach((h: string) => {
                 if (!attrs.includes(h) && fresh_fd[h] === side) fresh_fd[h] = 'N/A'
-            })
+            }) // If an attribute has been removed from the user's hypothesis, set it's side value to N/A (i.e. not LHS or RHS)
             console.log(fresh_fd)
             setFD(fresh_fd)
         }
     }
 
+    /** Data to show in example table */
     const fdExampleData = [
         {
             id: 1,
@@ -233,6 +243,7 @@ export const Start: FC<StartProps> = () => {
         }
     ]
 
+    /** Table data for Question 1 */
     const q1Data = [
         {
             name: 'Michael',
@@ -272,6 +283,7 @@ export const Start: FC<StartProps> = () => {
         },
     ]
 
+    /** Table data for question 2 */
     const q2Data = [
         {
             id: 1,

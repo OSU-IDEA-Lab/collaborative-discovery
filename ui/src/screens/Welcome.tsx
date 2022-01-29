@@ -1,17 +1,15 @@
 import { AxiosResponse } from 'axios'
-import React, { FC, useState, useEffect } from 'react'
+import React, { FC, useState } from 'react'
 import { useHistory } from 'react-router-dom'
 import {
     Button,
     Form,
-    Modal,
     Input,
     Loader,
     Container,
     Grid,
     Dimmer,
     Segment,
-    Image,
     Message,
     Divider
 } from 'semantic-ui-react'
@@ -27,16 +25,21 @@ export const Welcome: FC<WelcomeProps> = () => {
 
     const history = useHistory()
 
+    /**
+     * Handle a press of the Get Started button
+     */
     const handleGetStarted = async () => {
-        setProcessing(true)
+        setProcessing(true) // show processing indicator
         const response: AxiosResponse = await server.post(
             '/start',
             { email }
-        )
+        ) // initialize the user in the backend and retrieve the user's scenarios
         const scenarios = response.data.scenarios
         if (response.status === 201 || scenarios.length === 5) {
+            // New user; take them to the Start page
             history.push('/start', { email, scenarios, status: 'begin' })
         } else if (response.status === 200) {
+            // Returning user; let them resume their work
             alert(`Welcome back! You have ${scenarios.length} datasets left to go.`)
             history.push('/start', { email, scenarios, status: 'resume'})
         }

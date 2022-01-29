@@ -1,10 +1,8 @@
 import { AxiosResponse } from 'axios'
-import { url } from 'node:inspector'
-import React, { FC, useEffect, useRef, useState } from 'react'
+import React, { FC, useEffect, useState } from 'react'
 import { useHistory, useLocation } from 'react-router-dom'
 import {
     Button,
-    Image,
     Loader,
     Container,
     Grid,
@@ -12,11 +10,6 @@ import {
     Segment,
     Message,
     Divider,
-    List,
-    Table,
-    Tab,
-    Form,
-    Radio,
     Input,
     Checkbox,
     Dropdown
@@ -30,23 +23,24 @@ export const PostInteraction: FC<PostInteractionProps> = () => {
 
     const history = useHistory()
     const location = useLocation()
-    const { header, email, scenarios, scenario_id } = location.state as any
-    // console.log(scenarios)
+    const { header, email, scenarios } = location.state as any
 
-    const [processing, setProcessing] = useState<boolean>(false)
-    const [fd, setFD] = useState<{[key: string]: string}>({})
-    const [doesntKnowFD, setDoesntKnowFD] = useState<boolean>(false)
-    const [fdComment, setFDComment] = useState<string>('')
-    const [dataOverviewRead, setDataOverviewRead] = useState<boolean>(false)
-    const [done, setDone] = useState<boolean>(false)
+    const [processing, setProcessing] = useState<boolean>(false) // The visibility of the processing indicator
+    const [fd, setFD] = useState<{[key: string]: string}>({}) // The user's initial FD hypothesis for the next interaction
+    const [doesntKnowFD, setDoesntKnowFD] = useState<boolean>(false) // Whether or not the user has an idea of the initial FD
+    const [fdComment, setFDComment] = useState<string>('') // Any comment the user provides with their initial FD hypothesis
+    const [dataOverviewRead, setDataOverviewRead] = useState<boolean>(false) // Whether or not the user read the data overview for this interaction
+    const [done, setDone] = useState<boolean>(false) // Whether or not the user has completed all of their interactions
     const [comments, setComments] = useState<string>('')
 
+    /** Initialize the initial FD object */
     useEffect(() => {
         const init_fd: {[key: string]: string} = {}
         header.forEach((h: string) => init_fd[h] = 'N/A')
         setFD(init_fd)
     }, [header])
 
+    /** Define the details of each scenario */
     const scenarioDetails: {[key: number]: {[key: string]: string | null }} = {
         15: {
             domain: 'Movie',
@@ -95,32 +89,21 @@ export const PostInteraction: FC<PostInteractionProps> = () => {
         }
     }
 
-    // const handleQuizDone = async () => {
-    //     const answers = { fd, durationNeeded }
-    //     const response: AxiosResponse = await server.post('/post-interaction', {
-    //         email,
-    //         scenario_id,
-    //         next_scenario_id: scenarios[0].toString(),
-    //         answers
-    //     })
-    //     if (response.status === 201) {
-    //         setHeader(response.data.header)
-    //         setQuizDone(true)
-    //     } else {
-    //         console.error(response.status)
-    //         console.error(response.data.msg)
-    //     }
-    // }
-
+    /**
+     * Handle the user indicating they're ready to begin the next interaction (pressing the Go to the Data button)
+     */
     const handleReady = async () => {
-        setProcessing(true)
+        setProcessing(true) // turn on the processing indicator
         const next_scenario: number = scenarios.splice(0, 1) as number
+
+        // build the user's FD hypothesis as a string
         const lhs: string[] = Object.keys(fd).filter((k: string) => fd[k] === 'LHS')
         lhs.sort()
         const rhs: string[] = Object.keys(fd).filter((k: string) => fd[k] === 'RHS')
         rhs.sort()
         const initial_fd: string = `(${lhs.join(', ')}) => ${rhs.join(', ')}`
-        console.log(initial_fd)
+        
+        // send the user's hypothesis to the backend and begin the next interaction
         const response: AxiosResponse = await server.post('/import', {
             email,
             scenario_id: next_scenario.toString(),
@@ -128,7 +111,8 @@ export const PostInteraction: FC<PostInteractionProps> = () => {
             fd_comment: fdComment,
         })
         const { project_id, description } = response.data
-        console.log(header)
+        
+        // Go to the interaction page for the next interaction
         history.push('/interact', {
             email,
             scenarios,
@@ -139,8 +123,10 @@ export const PostInteraction: FC<PostInteractionProps> = () => {
         })
     }
 
+    /** Handle the user submitting their comments when they've completed all scenarios */
     const handleDoneComments = async (mode: 'skip' | 'submit') => {
         setProcessing(true)
+        // Send the user's final comments to the backend
         const response: AxiosResponse = await server.post('/done', {
             email,
             comments: mode === 'submit' ? comments : '',
@@ -151,27 +137,28 @@ export const PostInteraction: FC<PostInteractionProps> = () => {
         }
     }
 
+    /** Test that the user's FD is valid */
     const isValidFD = () => {
+        // There must be at least one attribute on both the LHS and RHS
         return Object.keys(fd).filter((k: string) => fd[k] === 'LHS').length !== 0
         && Object.keys(fd).filter((k: string) => fd[k] === 'RHS').length !== 0
     }
 
+    /** Build the user's FD hypothesis */
     const buildFD = (attrs: any, side: 'LHS' | 'RHS') => {
         if (attrs) {
             const fresh_fd: {[key: string]: string} = {}
             header.forEach((h: string) => {
                 fresh_fd[h] = fd[h]
-            })
+            }) // Start with the user's previous hypothesis
             attrs.forEach((attr: string) => {
                 fresh_fd[attr] = side
-            })
+            }) // Update the LHS/RHS distinctions for the updated attributes
             header.forEach((h: string) => {
                 if (!attrs.includes(h) && fresh_fd[h] === side) fresh_fd[h] = 'N/A'
-            })
-            console.log(fresh_fd)
+            }) // Mark removed attributes as N/A
             setFD(fresh_fd)
         }
-        isValidFD()
     }
 
     return (
@@ -204,9 +191,6 @@ export const PostInteraction: FC<PostInteractionProps> = () => {
                         scenarios.length > 0 ? (
                             <Message>
                                 <Message.Header>
-                                    {/* {
-                                        scenarios.length > 1 ? 'Your Next Dataset' : 'Your Last Dataset'
-                                    } */}
                                     <h2>Your Next Dataset</h2>
                                 </Message.Header>
                                 <Divider />
